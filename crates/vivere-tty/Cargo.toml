@@ -1,0 +1,11 @@
+[package]
+name = "vivere-tty"
+description = "Watch a vivere world evolve live in your terminal — over SSH, in tmux, anywhere"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+vivere-core.workspace = true
+crossterm = "0.28"

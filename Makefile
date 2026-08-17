@@ -12,6 +12,11 @@ build:
 run:
 	$(CARGO) run --release -p vivere-viewer
 
+## Watch a world in the terminal: make tty [TTY_ARGS="--resume runs/x.snap"]
+TTY_ARGS ?= --seed 42
+tty:
+	$(CARGO) run --release -p vivere-tty -- $(TTY_ARGS)
+
 ## Headless run: make sim SEED=42 TICKS=50000 OUT=runs/run.csv
 sim:
 	@mkdir -p runs
