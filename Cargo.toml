@@ -5,6 +5,7 @@ members = [
     "crates/vivere-cli",
     "crates/vivere-viewer",
     "crates/vivere-gif",
+    "crates/vivere-tty",
 ]
 
 [workspace.package]
