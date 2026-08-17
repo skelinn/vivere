@@ -21,12 +21,22 @@ pub struct Organism {
     pub age: u32,
     pub genome: Genome,
     pub brain: BrainState,
+    /// Tick of the most recent bite received (`u64::MAX` = never). Metrics
+    /// attribution only — no sense can read it.
+    pub last_bitten_tick: u64,
+    /// Total energy ever drained from this organism by bites.
+    pub lifetime_drained: f64,
+    /// Energy drained by bites during the previous tick — the substrate of
+    /// the `drain_felt` sense, so it is world state and serialized.
+    pub drained_last_tick: f64,
     #[serde(skip)]
     pub last_senses: [f32; N_SENSES],
     #[serde(skip)]
     pub last_turn: f32,
     #[serde(skip)]
     pub last_speed: f32,
+    #[serde(skip)]
+    pub last_bite: f32,
 }
 
 impl Organism {

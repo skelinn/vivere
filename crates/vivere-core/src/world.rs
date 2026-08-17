@@ -8,13 +8,17 @@
 //! 2. spatial grids rebuild
 //! 3. every organism senses and thinks (against the same world state)
 //! 4. every organism moves (and pays for it)
-//! 5. eating, in a per-tick shuffled order (no standing index advantage)
-//! 6. reproduction (mutated child, paid for exactly)
-//! 7. upkeep and aging
-//! 8. deaths → detritus
-//! 9. detritus composts back into food
+//! 5. touch — bite drains between touching bodies (own shuffled order)
+//! 6. eating, in a per-tick shuffled order (no standing index advantage)
+//! 7. reproduction (mutated child, paid for exactly)
+//! 8. upkeep and aging
+//! 9. deaths → detritus
+//! 10. detritus composts back into food
 //!
-//! Nothing in here scores, guides, or protects organisms.
+//! Nothing in here scores, guides, or protects organisms. Note that a
+//! contact-disabled world is *not* a v0.1 world: pool sizes remap every
+//! mutation draw and the touch shuffle disappears, so it is its own
+//! baseline, not a continuation.
 
 use crate::brain::{self, BrainState, N_SENSES};
 use crate::config::Config;
@@ -94,6 +98,15 @@ pub struct World {
     pub births: u64,
     pub deaths_starve: u64,
     pub deaths_age: u64,
+    pub deaths_predation: u64,
+    pub bites: u64,
+    /// Total energy ever moved organism→organism by bites.
+    pub predation_flux: f64,
+    /// Σ hue distance over all bites — against the ambient neighbor
+    /// baseline below, the kin-discrimination signal.
+    pub bite_hue_sum: f64,
+    pub neighbor_hue_sum: f64,
+    pub neighbor_hue_count: u64,
 
     // Transient scratch state: rebuilt or cleared every tick, never
     // serialized, and never observable by organisms.
@@ -102,7 +115,7 @@ pub struct World {
     #[serde(skip)]
     food_grid: Grid,
     #[serde(skip)]
-    decisions: Vec<(f32, f32)>,
+    decisions: Vec<(f32, f32, f32)>,
     #[serde(skip)]
     order: Vec<u32>,
 }
@@ -171,9 +184,13 @@ impl World {
                 age: 0,
                 genome,
                 brain: BrainState::default(),
+                last_bitten_tick: u64::MAX,
+                lifetime_drained: 0.0,
+                drained_last_tick: 0.0,
                 last_senses: [0.0; N_SENSES],
                 last_turn: 0.0,
                 last_speed: 0.0,
+                last_bite: 0.0,
             });
         }
 
@@ -192,6 +209,12 @@ impl World {
             births: 0,
             deaths_starve: 0,
             deaths_age: 0,
+            deaths_predation: 0,
+            bites: 0,
+            predation_flux: 0.0,
+            bite_hue_sum: 0.0,
+            neighbor_hue_sum: 0.0,
+            neighbor_hue_count: 0,
             org_grid: Grid::default(),
             food_grid: Grid::default(),
             decisions: Vec::new(),
@@ -233,13 +256,17 @@ impl World {
             let o = &mut self.organisms[i];
             let decision = brain::think(&o.genome, &mut o.brain, &senses);
             o.last_senses = senses;
+            o.last_bite = decision.2;
+            // The drain_felt sense has now been read; the slate clears for
+            // this tick's touch phase.
+            o.drained_last_tick = 0.0;
             self.decisions.push(decision);
         }
 
         // 4. Move and pay for it.
         let mut radiated = 0.0f64;
         for i in 0..n {
-            let (turn, thrust) = self.decisions[i];
+            let (turn, thrust, _) = self.decisions[i];
             let o = &mut self.organisms[i];
             o.heading = wrap_angle(o.heading + turn * cfg.body.turn_rate);
             let v = thrust * o.genome.body.max_speed;
@@ -253,7 +280,89 @@ impl World {
             radiated += burn;
         }
 
-        // 5. Eat, in per-tick shuffled order. Food does not move, so the
+        // 5. Touch: bodies are reachable energy to each other. Bite is
+        // continuous effort; firing costs a lunge whether or not anything
+        // is in reach, so speculative aggression is priced. Targets must be
+        // touching and within the ±90° mouth cone — mouths have fronts, so
+        // facing and approach angle matter (rear attacks are real). The
+        // organism grid is pre-movement, but cells are ≥ the sense radius
+        // and nothing moves more than a few units per tick, so the 3×3 scan
+        // still covers every possible contact; distances use current
+        // positions. Fresh shuffled order — sharing the eat permutation
+        // would correlate feeding and fighting priority.
+        if cfg.contact.enabled {
+            let mut order = core::mem::take(&mut self.order);
+            order.clear();
+            order.extend(0..n as u32);
+            for k in (1..n).rev() {
+                let j = self.rng.below(k + 1);
+                order.swap(k, j);
+            }
+            for &ai in &order {
+                let ai = ai as usize;
+                let effort = self.decisions[ai].2 as f64;
+                if effort <= 0.0 {
+                    continue;
+                }
+                let a = &self.organisms[ai];
+                let (ax, ay, ah) = (a.x, a.y, a.heading);
+                let a_size = a.genome.body.size;
+                let a_metab = a.genome.body.metab;
+                let a_radius = a.radius(&cfg);
+                let a_cap = a.capacity(&cfg);
+                {
+                    let lunge = cfg.contact.lunge_cost * a_size as f64 * effort;
+                    let a = &mut self.organisms[ai];
+                    let burn = lunge.min(a.energy);
+                    a.energy -= burn;
+                    radiated += burn;
+                }
+                let (hx, hy) = (libm::cosf(ah), libm::sinf(ah));
+                let mut best: Option<(usize, f32)> = None;
+                self.org_grid.for_each_neighbor(ax, ay, |vi| {
+                    let vi = vi as usize;
+                    if vi == ai {
+                        return;
+                    }
+                    let v = &self.organisms[vi];
+                    let dx = wrap_delta(ax, v.x, w);
+                    let dy = wrap_delta(ay, v.y, h);
+                    let reach = a_radius + v.radius(&cfg);
+                    let d2 = dx * dx + dy * dy;
+                    if d2 > reach * reach || dx * hx + dy * hy <= 0.0 {
+                        return;
+                    }
+                    if best.is_none_or(|(_, b)| d2 < b) {
+                        best = Some((vi, d2));
+                    }
+                });
+                if let Some((vi, _)) = best {
+                    let eff = cfg.contact.flesh_efficiency;
+                    let flux = effort * cfg.contact.bite_flux * (a_size * a_metab) as f64;
+                    let headroom = ((a_cap - self.organisms[ai].energy) / eff).max(0.0);
+                    let drain = flux.min(self.organisms[vi].energy).min(headroom);
+                    if drain > 0.0 {
+                        let hue_a = self.organisms[ai].genome.body.hue;
+                        let hue_v = self.organisms[vi].genome.body.hue;
+                        let v = &mut self.organisms[vi];
+                        v.energy -= drain;
+                        v.drained_last_tick += drain;
+                        v.lifetime_drained += drain;
+                        v.last_bitten_tick = self.tick;
+                        let a = &mut self.organisms[ai];
+                        a.energy += eff * drain;
+                        radiated += (1.0 - eff) * drain;
+                        self.bites += 1;
+                        self.predation_flux += drain;
+                        let hd = (hue_a - hue_v).abs();
+                        self.bite_hue_sum += (hd.min(1.0 - hd) * 2.0) as f64;
+                    }
+                }
+            }
+            self.order = order;
+        }
+
+        // 6. Eat, in per-tick shuffled order. Food does not move, so the
         // pre-movement food grid stays valid; eaten pellets are skipped by
         // their zeroed energy and swept at the end of the tick.
         let mut order = core::mem::take(&mut self.order);
@@ -296,7 +405,7 @@ impl World {
             });
         }
 
-        // 6. Reproduce: mutate first, then pay the exact price of the child
+        // 7. Reproduce: mutate first, then pay the exact price of the child
         // that resulted. Children join the world this tick but are appended
         // after the loop, so they act for the first time next tick.
         for &oi in &order {
@@ -333,9 +442,13 @@ impl World {
                 age: 0,
                 genome: child_genome,
                 brain: BrainState::default(),
+                last_bitten_tick: u64::MAX,
+                lifetime_drained: 0.0,
+                drained_last_tick: 0.0,
                 last_senses: [0.0; N_SENSES],
                 last_turn: 0.0,
                 last_speed: 0.0,
+                last_bite: 0.0,
             };
             self.next_id += 1;
             self.births += 1;
@@ -343,7 +456,7 @@ impl World {
         }
         self.order = order;
 
-        // 7. Upkeep and aging — everyone, newborns included.
+        // 8. Upkeep and aging — everyone, newborns included.
         for o in &mut self.organisms {
             let burn = o.upkeep(&cfg).min(o.energy);
             o.energy -= burn;
@@ -351,7 +464,7 @@ impl World {
             o.age += 1;
         }
 
-        // 8. Death: out of energy, or out of time. The body — soma plus any
+        // 9. Death: out of energy, or out of time. The body — soma plus any
         // remaining energy — becomes detritus where it fell.
         let mut kept = 0usize;
         for i in 0..self.organisms.len() {
@@ -360,7 +473,17 @@ impl World {
             let aged_out = (o.age as f32) > o.genome.body.max_age;
             if starved || aged_out {
                 if starved {
-                    self.deaths_starve += 1;
+                    // A starvation while being actively eaten is a kill.
+                    // Both conditions guard against attributing a lifetime
+                    // of nibbles or a single ancient bite.
+                    let predated = o.last_bitten_tick != u64::MAX
+                        && self.tick - o.last_bitten_tick <= 20
+                        && o.lifetime_drained >= 0.15 * o.capacity(&cfg);
+                    if predated {
+                        self.deaths_predation += 1;
+                    } else {
+                        self.deaths_starve += 1;
+                    }
                 } else {
                     self.deaths_age += 1;
                 }
@@ -377,7 +500,7 @@ impl World {
         }
         self.organisms.truncate(kept);
 
-        // 9. Compost: detritus decays back into food, imperfectly.
+        // 10. Compost: detritus decays back into food, imperfectly.
         for i in 0..self.detritus.len() {
             let d = &mut self.detritus[i];
             d.ticks_left -= 1;
@@ -438,12 +561,30 @@ impl World {
         }
 
         let (mut org_dir, mut org_dist) = (0.0f32, 0.0f32);
+        let (mut org_size, mut org_hue) = (0.0f32, 0.0f32);
         if let Some((ni, d2)) = self.nearest_organism(o.x, o.y, i) {
             let other = &self.organisms[ni];
             let dx = wrap_delta(o.x, other.x, w);
             let dy = wrap_delta(o.y, other.y, h);
             org_dir = wrap_angle(libm::atan2f(dy, dx) - o.heading) / PI;
             org_dist = 1.0 - d2.sqrt() / r;
+            // Relative size, symmetric and bounded: 0 for an equal, →1 for
+            // a giant, →−1 for a mote.
+            let (their, mine) = (other.genome.body.size, o.genome.body.size);
+            org_size = (their - mine) / (their + mine);
+            // Signed circular hue difference — the kin/mimicry channel.
+            let mut dh = other.genome.body.hue - o.genome.body.hue;
+            if dh > 0.5 {
+                dh -= 1.0;
+            } else if dh < -0.5 {
+                dh += 1.0;
+            }
+            org_hue = dh * 2.0;
+            // Ambient kin-sortedness baseline for the bite-hue metric —
+            // observation piggybacked on state already in hand; affects
+            // nothing an organism can perceive.
+            self.neighbor_hue_sum += (dh.abs() * 2.0) as f64;
+            self.neighbor_hue_count += 1;
         }
 
         let energy = (o.energy / o.capacity(cfg)).clamp(0.0, 1.0) as f32;
@@ -451,9 +592,11 @@ impl World {
         let p = cfg.body.oscillator_period;
         let osc = libm::sinf(TAU * ((o.age as f32) % p) / p);
         let noise = self.rng.range_f32(-1.0, 1.0);
+        let drain_felt = (o.drained_last_tick / o.capacity(cfg)).clamp(0.0, 1.0) as f32;
 
         [
-            1.0, food_dir, food_dist, org_dir, org_dist, energy, age, noise, osc,
+            1.0, food_dir, food_dist, org_dir, org_dist, energy, age, noise, osc, org_size,
+            org_hue, drain_felt,
         ]
     }
 

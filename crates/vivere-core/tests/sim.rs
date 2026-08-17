@@ -77,3 +77,38 @@ fn snapshot_rejects_garbage() {
     assert!(World::from_snapshot_bytes(b"not a snapshot at all").is_err());
     assert!(World::from_snapshot_bytes(b"").is_err());
 }
+
+/// With the contact channel disabled, no bite can ever land — and the
+/// world remains deterministic and conserved.
+#[test]
+fn contact_disabled_world_never_bites() {
+    let mut cfg = Config::test_small();
+    cfg.contact.enabled = false;
+    let mut w = World::new(cfg, 42);
+    for _ in 0..600 {
+        w.step();
+    }
+    assert_eq!(w.bites, 0);
+    assert_eq!(w.predation_flux, 0.0);
+    assert_eq!(w.deaths_predation, 0);
+}
+
+/// Contact-on and contact-off are different universes from the same seed —
+/// and bites actually occur in the default world (founders carry random
+/// bite wiring), which means the conservation test upstream is genuinely
+/// exercising the drain flows.
+#[test]
+fn contact_worlds_diverge_and_bite() {
+    let mut off_cfg = Config::test_small();
+    off_cfg.contact.enabled = false;
+    let mut on = World::new(Config::test_small(), 42);
+    let mut off = World::new(off_cfg, 42);
+    for _ in 0..600 {
+        on.step();
+        off.step();
+    }
+    assert_ne!(on.snapshot_bytes(), off.snapshot_bytes());
+    assert!(on.bites > 0, "expected founder bite wiring to land bites");
+    let err = on.conservation_error().abs();
+    assert!(err <= 1e-9 * on.ledger.injected.max(1.0));
+}

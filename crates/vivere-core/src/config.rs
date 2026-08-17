@@ -20,6 +20,7 @@ pub struct Config {
     pub body: BodyCfg,
     pub repro: ReproCfg,
     pub mutation: MutationCfg,
+    pub contact: ContactCfg,
 }
 
 /// World geometry and initial conditions.
@@ -112,6 +113,23 @@ pub struct ReproCfg {
     pub overhead: f64,
     /// Child spawns this far behind the parent.
     pub spawn_offset: f32,
+}
+
+/// Contact physics: bodies are reachable energy to each other. Whether and
+/// how hard to bite is the brain's third output; these constants only price
+/// the channel. Frozen physics — not environment knobs. `enabled` exists
+/// solely for controlled A/B experiments (a world without the channel vs.
+/// with it), never as a tuning lever.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ContactCfg {
+    pub enabled: bool,
+    /// Drain per tick per (attacker size × metab × bite effort).
+    pub bite_flux: f64,
+    /// Fraction of drained energy the attacker keeps; the rest is heat.
+    pub flesh_efficiency: f64,
+    /// Cost per tick per (size × effort) whenever the bite output fires,
+    /// contact or not — speculative aggression is never free.
+    pub lunge_cost: f64,
 }
 
 /// Heredity physics: how copying errs. Frozen along with body constants —
@@ -219,6 +237,18 @@ impl Default for Config {
                 genome_cap: 64,
                 initial_connections: 12,
                 weight_max: 4.0,
+            },
+            // Bite economics: at flux 0.6, draining a mid-size victim takes
+            // 40–90 ticks — parasitism before predation, slow enough that
+            // fleeing and defense can act, still ~10× richer per tick than
+            // influx-limited grazing, so fixation is a real question rather
+            // than a foregone conclusion (at 2.0 the mature world would be
+            // in the instant-kill regime: no victim-side selection at all).
+            contact: ContactCfg {
+                enabled: true,
+                bite_flux: 0.6,
+                flesh_efficiency: 0.75,
+                lunge_cost: 0.05,
             },
         }
     }
