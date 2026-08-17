@@ -38,3 +38,20 @@ fn garbage_is_refused() {
     assert!(import_v01(b"VIVERE02not actually v1", true).is_err());
     assert!(import_v01(b"", true).is_err());
 }
+
+/// The v0.2 fixture must decode to exactly the scalars recorded when it was
+/// frozen — the tripwire that catches any silent decode misalignment after
+/// future format bumps route this file through a legacy importer.
+#[test]
+fn v02_fixture_decodes_to_recorded_scalars() {
+    let bytes: &[u8] = include_bytes!("fixtures/v02_small.snap");
+    let recorded = include_str!("fixtures/v02_small.assert");
+    let mut world = vivere_cli::load_any_snapshot(bytes, false).expect("v0.2 fixture decodes");
+    assert_eq!(vivere_cli::inspect::summary(&world), recorded);
+    for _ in 0..300 {
+        world.step();
+    }
+    let err = world.conservation_error().abs();
+    let bound = 1e-9 * world.ledger.injected.max(1.0);
+    assert!(err <= bound, "drift {err} > {bound}");
+}

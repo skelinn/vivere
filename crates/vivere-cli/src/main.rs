@@ -44,15 +44,25 @@ enum Cmd {
     },
     /// Print the default config as TOML (save, edit, pass back via --config).
     DefaultConfig,
-    /// Convert a v0.1 snapshot into the current format: same world, same
-    /// environment, v0.2 physics. The generation-600 grazers meet the new
-    /// costs — and, if --contact true, eventually the teeth.
-    ImportV01 {
+    /// Convert any older snapshot into the current format (the version is
+    /// sniffed from the file's magic). Imported worlds get current physics
+    /// with their original environment.
+    #[command(alias = "import-v01")]
+    Import {
         input: PathBuf,
         output: PathBuf,
-        /// Whether the imported world has the contact channel enabled.
+        /// For v0.1 snapshots (which predate contact physics): whether the
+        /// imported world has the contact channel enabled.
         #[arg(long, default_value_t = false)]
         contact: bool,
+    },
+    /// Genome census of a snapshot (any version): live vs junk wiring,
+    /// hidden-pool utilization, and which senses evolution actually reads.
+    Inspect {
+        snap: PathBuf,
+        /// Print machine-readable `key value` lines instead of the report.
+        #[arg(long)]
+        summary: bool,
     },
 }
 
@@ -71,23 +81,37 @@ fn run(cli: Cli) -> Result<(), String> {
             println!("{toml}");
             Ok(())
         }
-        Cmd::ImportV01 {
+        Cmd::Import {
             input,
             output,
             contact,
         } => {
             let bytes =
                 fs::read(&input).map_err(|e| format!("reading {}: {e}", input.display()))?;
-            let world = vivere_cli::legacy_v01::import_v01(&bytes, contact)?;
+            let world = vivere_cli::load_any_snapshot(&bytes, contact)?;
             fs::write(&output, world.snapshot_bytes())
                 .map_err(|e| format!("writing {}: {e}", output.display()))?;
             eprintln!(
                 "imported: tick {}  population {}  contact {}  -> {}",
                 world.tick,
                 world.organisms.len(),
-                if contact { "ON" } else { "off (quarantined)" },
+                if world.cfg.contact.enabled {
+                    "ON"
+                } else {
+                    "off (quarantined)"
+                },
                 output.display()
             );
+            Ok(())
+        }
+        Cmd::Inspect { snap, summary } => {
+            let bytes = fs::read(&snap).map_err(|e| format!("reading {}: {e}", snap.display()))?;
+            let world = vivere_cli::load_any_snapshot(&bytes, false)?;
+            if summary {
+                print!("{}", vivere_cli::inspect::summary(&world));
+            } else {
+                print!("{}", vivere_cli::inspect::report(&world));
+            }
             Ok(())
         }
         Cmd::Run {
