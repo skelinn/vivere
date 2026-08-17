@@ -1,5 +1,9 @@
 # vivere
 
+[![ci](https://github.com/skelinn/vivere/actions/workflows/ci.yml/badge.svg)](https://github.com/skelinn/vivere/actions/workflows/ci.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![deterministic](https://img.shields.io/badge/runs-deterministic-8A2BE2)](docs/DESIGN.md#determinism)
+
 > *vivere* (Latin): to live.
 
 **vivere is an attempt to create life digitally — not to imitate it, but to build worlds where it can arise. We start with physics that conserves energy, add heredity and mutation, and let selection do the rest.**
@@ -30,6 +34,9 @@ In v0.1 evolution has exactly two things to work with: steering (the brain) and 
 ## Quickstart
 
 ```sh
+git clone https://github.com/skelinn/vivere
+cd vivere
+
 # native viewer (pause/step/speed, click an organism to inspect it)
 make run
 
