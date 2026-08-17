@@ -40,13 +40,16 @@ impl Organism {
 
     /// Basal metabolic burn per tick. The floor is size-independent so
     /// miniaturization can't escape the cost of being alive; metabolic
-    /// rate, longevity, and brain size each add their share.
+    /// rate, longevity (in absolute ticks — never normalized to the gene
+    /// walls), speed capacity, and brain size each add their share. Muscle
+    /// you never use still has to be fed.
     pub fn upkeep(&self, cfg: &Config) -> f64 {
         let b = &cfg.body;
         let g = &self.genome.body;
-        let age_norm = ((g.max_age - b.age_min) / (b.age_max - b.age_min)) as f64;
         b.upkeep_floor
-            + g.size as f64 * (b.upkeep_metab * g.metab as f64 + b.upkeep_age * age_norm)
+            + g.size as f64
+                * (b.upkeep_metab * g.metab as f64 + b.upkeep_age * (g.max_age as f64 / 1000.0))
+            + b.upkeep_speed_capacity * (g.size * g.max_speed) as f64
             + b.upkeep_per_connection * self.genome.connections.len() as f64
     }
 

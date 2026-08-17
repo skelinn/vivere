@@ -27,7 +27,7 @@ use crate::rng::Rng;
 use core::f32::consts::{PI, TAU};
 use serde::{Deserialize, Serialize};
 
-pub const SNAPSHOT_MAGIC: &[u8; 8] = b"VIVERE01";
+pub const SNAPSHOT_MAGIC: &[u8; 8] = b"VIVERE02";
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Food {

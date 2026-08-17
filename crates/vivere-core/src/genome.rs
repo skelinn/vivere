@@ -72,11 +72,13 @@ impl Genome {
         let connections = (0..cfg.mutation.initial_connections)
             .map(|_| Connection::random(rng))
             .collect();
+        // Scale genes draw log-uniformly: linear-uniform over a 10–30×
+        // range would over-sample the high end.
         let body = Body {
-            size: rng.range_f32(b.size_min, b.size_max),
-            max_speed: rng.range_f32(b.speed_min, b.speed_max),
-            metab: rng.range_f32(b.metab_min, b.metab_max),
-            max_age: rng.range_f32(b.age_min, b.age_max),
+            size: rng.log_range_f32(b.size_min, b.size_max),
+            max_speed: rng.log_range_f32(b.speed_min, b.speed_max),
+            metab: rng.log_range_f32(b.metab_min, b.metab_max),
+            max_age: rng.log_range_f32(b.age_min, b.age_max),
             hue: rng.f32(),
         };
         Self { connections, body }
@@ -130,30 +132,62 @@ impl Genome {
         let b = &cfg.body;
         let bd = &mut g.body;
         if rng.chance(m.body_p) {
-            bd.size = (bd.size + rng.gaussian() * m.body_sigma_frac * (b.size_max - b.size_min))
-                .clamp(b.size_min, b.size_max);
+            bd.size = mutate_log(
+                bd.size,
+                b.size_min,
+                b.size_max,
+                rng.gaussian() * m.scale_sigma_log,
+            );
         }
         if rng.chance(m.body_p) {
-            bd.max_speed = (bd.max_speed
-                + rng.gaussian() * m.body_sigma_frac * (b.speed_max - b.speed_min))
-                .clamp(b.speed_min, b.speed_max);
+            bd.max_speed = mutate_log(
+                bd.max_speed,
+                b.speed_min,
+                b.speed_max,
+                rng.gaussian() * m.scale_sigma_log,
+            );
         }
         if rng.chance(m.body_p) {
-            bd.metab = (bd.metab
-                + rng.gaussian() * m.body_sigma_frac * (b.metab_max - b.metab_min))
-                .clamp(b.metab_min, b.metab_max);
+            bd.metab = mutate_log(
+                bd.metab,
+                b.metab_min,
+                b.metab_max,
+                rng.gaussian() * m.scale_sigma_log,
+            );
         }
         if rng.chance(m.body_p) {
-            bd.max_age = (bd.max_age
-                + rng.gaussian() * m.body_sigma_frac * (b.age_max - b.age_min))
-                .clamp(b.age_min, b.age_max);
+            bd.max_age = mutate_log(
+                bd.max_age,
+                b.age_min,
+                b.age_max,
+                rng.gaussian() * m.scale_sigma_log,
+            );
         }
         if rng.chance(m.body_p) {
             // Hue is circular: it wraps rather than clamps, so it drifts freely.
-            bd.hue = (bd.hue + rng.gaussian() * m.body_sigma_frac).rem_euclid(1.0);
+            bd.hue = (bd.hue + rng.gaussian() * m.hue_sigma).rem_euclid(1.0);
         }
         g
     }
+}
+
+/// Multiplicative mutation, reflected at the range walls. A *clamped*
+/// multiplicative walk piles probability mass against the boundaries and
+/// leaves atoms sitting exactly on the walls — the artifact the wider v0.2
+/// ranges exist to remove. Reflecting in log space keeps the stationary
+/// distribution flat with no wall atoms. The step is bounded below the
+/// narrowest range width, so reflection terminates in at most two bounces.
+fn mutate_log(value: f32, lo: f32, hi: f32, step: f32) -> f32 {
+    let (llo, lhi) = (libm::logf(lo), libm::logf(hi));
+    let mut l = libm::logf(value) + step.clamp(-1.0, 1.0);
+    while l < llo || l > lhi {
+        l = if l < llo {
+            2.0 * llo - l
+        } else {
+            2.0 * lhi - l
+        };
+    }
+    libm::expf(l).clamp(lo, hi)
 }
 
 /// Connections sorted for the merge in [`genome_distance`].
@@ -178,7 +212,11 @@ pub fn genome_distance(
     cfg: &Config,
 ) -> f32 {
     let bb = &cfg.body;
-    let nd = |x: f32, y: f32, lo: f32, hi: f32| (x - y).abs() / (hi - lo);
+    // Scale genes live in log space (multiplicative mutation), so distance
+    // is measured there too — a 0.5→1.0 size difference equals 2.0→4.0.
+    let nd = |x: f32, y: f32, lo: f32, hi: f32| {
+        (libm::logf(x) - libm::logf(y)).abs() / (libm::logf(hi) - libm::logf(lo))
+    };
     let hue_d = {
         let d = (a.body.hue - b.body.hue).abs();
         d.min(1.0 - d) * 2.0

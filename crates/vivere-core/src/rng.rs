@@ -65,6 +65,12 @@ impl Rng {
         self.f32() < p
     }
 
+    /// Log-uniform in [lo, hi]: uniform in log space, so scale-like genes
+    /// spanning a 10–30× range don't over-sample their high end.
+    pub fn log_range_f32(&mut self, lo: f32, hi: f32) -> f32 {
+        libm::expf(self.range_f32(libm::logf(lo), libm::logf(hi))).clamp(lo, hi)
+    }
+
     /// Standard normal via Box–Muller. Generates a fresh pair every call and
     /// discards the second value: a cached "spare" would be hidden generator
     /// state, which would break snapshot exactness.

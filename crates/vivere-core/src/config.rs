@@ -83,8 +83,13 @@ pub struct BodyCfg {
     pub upkeep_floor: f64,
     /// Upkeep per tick per (size × metabolic rate).
     pub upkeep_metab: f64,
-    /// Upkeep per tick per (size × normalized max-age): longevity costs.
+    /// Upkeep per tick per (size × max_age/1000): longevity has maintenance
+    /// costs, priced in absolute ticks so the gene-range walls are never
+    /// load-bearing physics.
     pub upkeep_age: f64,
+    /// Upkeep per tick per (size × max_speed): fast-twitch capacity must be
+    /// fed even when unused, so idle muscle decays out of populations.
+    pub upkeep_speed_capacity: f64,
     /// Upkeep per tick per brain connection: computation costs energy.
     pub upkeep_per_connection: f64,
     /// Movement cost coefficient: cost = c · size · v² per tick.
@@ -126,8 +131,11 @@ pub struct MutationCfg {
     pub duplicate_p: f32,
     /// Per-body-gene chance of a perturbation.
     pub body_p: f32,
-    /// Body perturbation sigma, as a fraction of the gene's range.
-    pub body_sigma_frac: f32,
+    /// Log-space sigma for the four scale genes (size, speed, metab,
+    /// max_age): mutation is multiplicative, reflected at the range walls.
+    pub scale_sigma_log: f32,
+    /// Additive sigma for hue (circular, wraps).
+    pub hue_sigma: f32,
     /// Hard cap on connection count (bounds compute; far above typical use).
     pub genome_cap: usize,
     /// Connections in a founder's random genome.
@@ -136,6 +144,17 @@ pub struct MutationCfg {
     pub weight_max: f32,
 }
 
+// Carrying-capacity arithmetic behind the defaults (v0.2):
+// a log-uniform founder averages (geometric means) size 1.41, speed 1.34,
+// metab 0.87, max_age ≈ 2700. Its basal burn is
+//   0.010                              floor
+// + 1.41·(0.012·0.87 + 0.0007·2.7)   ≈ 0.017   metabolism + longevity
+// + 0.002·1.41·1.34                  ≈ 0.004   idle speed capacity
+// + 0.0004·12                        ≈ 0.005   brain
+// ≈ 0.036/tick, plus ~0.004 movement at half throttle → ~0.040/tick.
+// Influx 32/tick then supports K ≈ 800. The v0.1 mature grazer (size 2.38
+// hauling an unused 2.94 speed gene) pays ~+30% under the speed-capacity
+// term — deliberately: capacity you never use should not be free.
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -159,21 +178,22 @@ impl Default for Config {
                 compost_efficiency: 0.85,
             },
             body: BodyCfg {
-                size_min: 0.7,
-                size_max: 2.5,
-                speed_min: 0.5,
-                speed_max: 3.0,
-                metab_min: 0.5,
-                metab_max: 2.0,
-                age_min: 800.0,
-                age_max: 6000.0,
+                size_min: 0.5,
+                size_max: 4.0,
+                speed_min: 0.3,
+                speed_max: 6.0,
+                metab_min: 0.25,
+                metab_max: 3.0,
+                age_min: 500.0,
+                age_max: 15000.0,
                 capacity_per_size: 40.0,
                 soma_per_size: 8.0,
                 radius_per_size: 3.0,
                 food_radius: 2.0,
                 upkeep_floor: 0.010,
                 upkeep_metab: 0.012,
-                upkeep_age: 0.004,
+                upkeep_age: 0.0007,
+                upkeep_speed_capacity: 0.002,
                 upkeep_per_connection: 0.0004,
                 move_cost: 0.004,
                 bite_rate: 3.0,
@@ -194,7 +214,8 @@ impl Default for Config {
                 remove_p: 0.05,
                 duplicate_p: 0.02,
                 body_p: 0.08,
-                body_sigma_frac: 0.05,
+                scale_sigma_log: 0.06,
+                hue_sigma: 0.05,
                 genome_cap: 64,
                 initial_connections: 12,
                 weight_max: 4.0,
