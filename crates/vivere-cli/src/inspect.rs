@@ -283,26 +283,24 @@ pub fn report(world: &World) -> String {
     }
     let _ = writeln!(s);
     let _ = writeln!(s, "sense wiring (live genes only):");
-    for i in 0..N_SENSES {
+    for (i, name) in SENSE_NAMES.iter().enumerate() {
         let users = 100.0 * c.sense_users[i] as f64 / n;
         let per_org = c.sense_genes[i] as f64 / n;
         let mean_w = c.sense_weight[i] / c.sense_genes[i].max(1) as f64;
         let _ = writeln!(
             s,
-            "  {:>9}  wired by {users:>5.1}%  {per_org:>5.2} genes/org  mean|w| {mean_w:.2}",
-            SENSE_NAMES[i]
+            "  {name:>9}  wired by {users:>5.1}%  {per_org:>5.2} genes/org  mean|w| {mean_w:.2}"
         );
     }
     let _ = writeln!(s);
     let _ = writeln!(s, "output wiring (live genes only):");
-    for i in 0..N_OUTPUTS {
+    for (i, name) in OUTPUT_NAMES.iter().enumerate() {
         let users = 100.0 * c.output_users[i] as f64 / n;
         let per_org = c.output_genes[i] as f64 / n;
         let mean_w = c.output_weight[i] / c.output_genes[i].max(1) as f64;
         let _ = writeln!(
             s,
-            "  {:>9}  wired by {users:>5.1}%  {per_org:>5.2} genes/org  mean|w| {mean_w:.2}",
-            OUTPUT_NAMES[i]
+            "  {name:>9}  wired by {users:>5.1}%  {per_org:>5.2} genes/org  mean|w| {mean_w:.2}"
         );
     }
     s
