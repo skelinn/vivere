@@ -32,28 +32,43 @@ Fixed phase order, one tick (`world.rs`):
    radius, so any query is a 3×3 scan. Plain `Vec` buckets in insertion
    order: no hashing, no iteration-order nondeterminism, allocations reused.
 3. **Sense + think** — every organism reads the same pre-movement world:
-   nearest food (direction, proximity), nearest organism, own energy, age,
-   noise, oscillator, bias. The brain (below) returns turn and thrust.
+   nearest food (direction, proximity), nearest organism (direction,
+   proximity, relative size, signed hue difference), own energy, age,
+   noise, oscillator, bias, and `drain_felt` (energy lost to bites last
+   tick — interoception, so defense is never information-dark). The brain
+   (below) returns turn, thrust, and bite effort.
 4. **Move** — heading and position update; movement costs
    `move_cost · size · v²`, radiated as heat.
-5. **Eat** — automatic on contact, bite-limited per tick
+5. **Touch** (v0.2) — bite is continuous effort, zero at rest, the thrust
+   pattern: no threshold decides when biting is "meant". Firing costs a
+   lunge whether or not anything is in reach; landing drains the nearest
+   touching organism inside a ±90° mouth cone (mouths have fronts — facing
+   and approach angle are tactically real) at
+   `effort · bite_flux · size · metab` per tick, 75% kept, 25% radiated.
+   Victims keep their soma; kills leave corpses to phase 10's economy.
+   Own shuffled order — feeding and fighting priority stay uncorrelated.
+6. **Eat** — automatic on contact, bite-limited per tick
    (`bite_rate · metab · size`), capped by pellet content and free capacity;
    what isn't taken stays in the pellet. Contention resolves in a fresh
    random permutation each tick, so no lineage gets a standing index
    advantage.
-6. **Reproduce** — automatic above `0.75 · capacity`. The genome is mutated
+7. **Reproduce** — automatic above `0.75 · capacity`. The genome is mutated
    *first*, then the parent pays the exact price of the child that resulted
    (child's starting energy + child's soma + fixed overhead → heat). If a
    mutation made the child unaffordable, no birth.
-7. **Upkeep + aging** — basal burn: a size-independent floor (being alive
+8. **Upkeep + aging** — basal burn: a size-independent floor (being alive
    costs something, so miniaturization isn't free), plus terms for
-   size×metabolism, size×longevity, and brain connections (computation
-   costs energy — genome growth must earn its keep).
-8. **Death** — energy ≤ 0 or age > max_age. Nothing else kills. The corpse
-   (soma + leftover energy) becomes detritus where it fell.
-9. **Compost** — after a delay, detritus becomes food at an efficiency < 1;
-   the difference radiates. The cap from (1) does not gate compost — decay
-   is not photosynthesis.
+   size×metabolism, size×longevity (absolute ticks — never normalized to
+   the gene walls, so wall positions are not physics), size×max_speed
+   (idle capacity: muscle you never use still has to be fed), and brain
+   connections (computation costs energy — genome growth must earn its
+   keep).
+9. **Death** — energy ≤ 0 or age > max_age. Nothing else kills — a "kill"
+   is starvation the attacker manufactured. The corpse (soma + leftover
+   energy) becomes detritus where it fell.
+10. **Compost** — after a delay, detritus becomes food at an efficiency
+    < 1; the difference radiates. The cap from (1) does not gate compost —
+    decay is not photosynthesis.
 
 ## Energy ledger
 
@@ -81,8 +96,12 @@ costs more than filling its tank.
 
 biosim4-style: the genome is a flat list of connection genes
 `(source, sink, weight)` where sources are senses or hidden neurons and
-sinks are hidden neurons or outputs. Fixed pools: 9 senses, 8 hidden, 2
-outputs (turn, thrust). Hidden activations persist across ticks — they are
+sinks are hidden neurons or outputs. Fixed pools: 12 senses, 8 hidden, 3
+outputs (turn, thrust, bite). v0.2's channels were *appended*, so wiring
+evolved before them keeps its meaning and the new senses/outputs are
+reachable only through mutation — a fresh world starts with random bite
+wiring (persistence experiment); an imported v0.1 world has none
+(discovery experiment). Hidden activations persist across ticks — they are
 world state, serialized in snapshots — so recurrence and memory exist
 exactly where a genome wires them. Duplicate connections sum, which is what
 makes gene duplication a real mutation rather than a no-op.
@@ -94,8 +113,13 @@ marker that makes lineages visible.
 
 Mutation (per child): per-gene weight perturbation and rare rewiring;
 per-child connection add / remove / duplicate; per-gene body perturbation.
-Rates live in `MutationCfg` and are **frozen heredity physics** — they are
-not tuned to make outcomes nicer, and they are not environment knobs.
+Scale genes (size, speed, metab, max_age) mutate multiplicatively in log
+space and *reflect* at the range walls — a clamped multiplicative walk
+piles mass on the boundary, which is exactly the artifact wider walls
+exist to remove; founders draw log-uniformly, and distance/spread metrics
+measure these genes in log space. Rates live in `MutationCfg` and are
+**frozen heredity physics** — they are not tuned to make outcomes nicer,
+and they are not environment knobs.
 
 ## The tuning contract
 
@@ -139,7 +163,10 @@ cheap ordered commit (eat, reproduce, death).
 
 `postcard` serialization of the whole `World` — config, RNG state, ledger,
 every organism including hidden activations — behind an 8-byte magic
-(`VIVERE01`; bump on format change, refuse mismatches). Restore is exact:
+(`VIVERE02` as of v0.2; bumped on format change, mismatches refused, and
+`vivere import-v01` converts old snapshots behind two tamper-evident
+checksums: genes within the recorded v0.1 walls, energy books balanced).
+Restore is exact:
 a restored world's future is byte-identical to the original's (tested).
 Transient caches (grids, scratch buffers, inspector values) are
 `serde(skip)` and rebuilt on demand. Snapshots are how long runs resume
@@ -166,10 +193,11 @@ discover it.** No new verbs for organisms — new physics with consequences.
   one conserved scalar to a conserved vector. Eating, detritus, and light
   already flow through single points in `world.rs`, which is where the
   vector swap lands.
-- **Contact / predation** — a physical-overlap phase between move and eat:
-  bodies become resources (soma is already on the books, so a corpse or a
-  bitten body has well-defined energy). No `attack()` verb — reachability
-  plus economics, and let hunting, fleeing, and armor be discovered.
+- **Contact / predation** — *landed in v0.2* as the touch phase: bite as
+  continuous effort, a mouth cone, drain interoception, priced lunges. No
+  `attack()` verb was written and none exists — reachability plus
+  economics; whether hunting, fleeing, kin-sparing, or armor get
+  discovered is up to each world.
 - **Sexual reproduction** — reproduction is a single phase; crossover slots
   in as a second parent lookup (the organism-direction sense already
   exists). Speciation metrics fall out of the existing distance function.
