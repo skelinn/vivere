@@ -10,8 +10,8 @@
 
 Imitation is the trap this project is built to avoid. A simulated ant that follows an ant-behavior script is a puppet; nothing about it is alive, and nothing about it can surprise you. vivere goes the other way: build a small universe with honest physics — energy that is never created or destroyed, bodies that cost what they're made of, inheritance that errs — and then get out of the way. If something in that world feeds itself, outruns its costs, and leaves descendants, it is doing so because the world permits it, not because we told it to. The organisms owe us nothing, and that's the point: whatever survives is *real* survival, whatever evolves is *real* evolution, discovered rather than designed.
 
-![protocell](docs/assets/protocell.gif)
-*(GIF coming soon — run `make run` to watch a world live.)*
+![Seed 42 at generation ~600: organisms clustered in the sunlight patches](docs/assets/protocell.gif)
+*Seed 42 at generation ~600 — the evolved world of slow, large, long-lived grazers, clustered where the light grows food. Colors are heritable lineage markers. Regenerate with `make gif`; watch live with `make run`.*
 
 ## Principles
 
