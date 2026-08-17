@@ -279,6 +279,15 @@ async fn main() {
                 (0.15 * r).max(1.0),
                 Color::new(0.9, 0.9, 0.9, 0.8),
             );
+            if o.last_bite > 0.05 {
+                draw_circle_lines(
+                    sx,
+                    sy,
+                    r + 2.0,
+                    1.2,
+                    Color::new(1.0, 0.35, 0.30, 0.5 + 0.5 * o.last_bite.min(1.0)),
+                );
+            }
             if Some(o.id) == selected {
                 draw_circle_lines(sx, sy, r + 4.0, 1.5, WHITE);
                 selected_org = Some(o);
