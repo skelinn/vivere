@@ -1,0 +1,15 @@
+tick 300
+population 115
+food 78
+detritus 20
+births 80
+deaths_starve 11
+deaths_age 0
+deaths_predation 14
+bites 1769
+next_id 140
+injected 8002.825127
+radiated 2915.935006
+world_energy 5086.890121
+genes 1374
+mean_genome_len 11.9478
