@@ -675,6 +675,8 @@ name = "vivere-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "postcard",
+ "serde",
  "toml",
  "vivere-core",
 ]

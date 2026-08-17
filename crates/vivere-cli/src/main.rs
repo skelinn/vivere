@@ -36,9 +36,24 @@ enum Cmd {
         /// Resume from a snapshot instead of creating a fresh world.
         #[arg(long)]
         resume: Option<PathBuf>,
+        /// Flip the contact-physics channel on the loaded world (an explicit
+        /// experimenter action, announced on stderr; for staged experiments
+        /// like quarantine-then-teeth).
+        #[arg(long)]
+        override_contact: Option<bool>,
     },
     /// Print the default config as TOML (save, edit, pass back via --config).
     DefaultConfig,
+    /// Convert a v0.1 snapshot into the current format: same world, same
+    /// environment, v0.2 physics. The generation-600 grazers meet the new
+    /// costs — and, if --contact true, eventually the teeth.
+    ImportV01 {
+        input: PathBuf,
+        output: PathBuf,
+        /// Whether the imported world has the contact channel enabled.
+        #[arg(long, default_value_t = false)]
+        contact: bool,
+    },
 }
 
 fn main() {
@@ -56,6 +71,25 @@ fn run(cli: Cli) -> Result<(), String> {
             println!("{toml}");
             Ok(())
         }
+        Cmd::ImportV01 {
+            input,
+            output,
+            contact,
+        } => {
+            let bytes =
+                fs::read(&input).map_err(|e| format!("reading {}: {e}", input.display()))?;
+            let world = vivere_cli::legacy_v01::import_v01(&bytes, contact)?;
+            fs::write(&output, world.snapshot_bytes())
+                .map_err(|e| format!("writing {}: {e}", output.display()))?;
+            eprintln!(
+                "imported: tick {}  population {}  contact {}  -> {}",
+                world.tick,
+                world.organisms.len(),
+                if contact { "ON" } else { "off (quarantined)" },
+                output.display()
+            );
+            Ok(())
+        }
         Cmd::Run {
             seed,
             ticks,
@@ -64,6 +98,7 @@ fn run(cli: Cli) -> Result<(), String> {
             config,
             save_snapshot,
             resume,
+            override_contact,
         } => {
             let mut world = match &resume {
                 Some(path) => {
@@ -90,6 +125,14 @@ fn run(cli: Cli) -> Result<(), String> {
                     World::new(cfg, seed)
                 }
             };
+            if let Some(enabled) = override_contact {
+                eprintln!(
+                    "override: contact physics {} (was {})",
+                    if enabled { "ENABLED" } else { "DISABLED" },
+                    world.cfg.contact.enabled
+                );
+                world.cfg.contact.enabled = enabled;
+            }
 
             let mut csv = match &out {
                 Some(path) => {
