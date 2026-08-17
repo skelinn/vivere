@@ -440,7 +440,10 @@ fn draw_inspector(o: &Organism, cfg: &Config) {
         line(&format!("{name:>9} {value:+.2}"), 14.0, faint, &mut y);
     }
     line(
-        &format!("out: turn {:+.2}  speed {:.2}", o.last_turn, o.last_speed),
+        &format!(
+            "out: turn {:+.2}  speed {:.2}  bite {:.2}",
+            o.last_turn, o.last_speed, o.last_bite
+        ),
         15.0,
         body,
         &mut y,
