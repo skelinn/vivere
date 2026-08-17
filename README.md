@@ -11,7 +11,20 @@
 Imitation is the trap this project is built to avoid. A simulated ant that follows an ant-behavior script is a puppet; nothing about it is alive, and nothing about it can surprise you. vivere goes the other way: build a small universe with honest physics — energy that is never created or destroyed, bodies that cost what they're made of, inheritance that errs — and then get out of the way. If something in that world feeds itself, outruns its costs, and leaves descendants, it is doing so because the world permits it, not because we told it to. The organisms owe us nothing, and that's the point: whatever survives is *real* survival, whatever evolves is *real* evolution, discovered rather than designed.
 
 ![Seed 42 at generation ~600: organisms clustered in the sunlight patches](docs/assets/protocell.gif)
-*Seed 42 at generation ~600 — the evolved world of slow, large, long-lived grazers, clustered where the light grows food. Colors are heritable lineage markers. Regenerate with `make gif`; watch live with `make run`.*
+*Before: seed 42 at generation ~600 — slow, large, long-lived grazers clustered where the light grows food. Colors are heritable lineage markers.*
+
+![The same lineage after contact physics: sparser, faster survivors and abundant uneaten food](docs/assets/contact.gif)
+*After: the same unbroken lineage at generation ~6,300, one million ticks after contact physics arrived and predation was invented (red flashes are bites landing). Fewer, faster organisms — and three times the standing food. Nobody programmed either world; they grew.*
+
+```sh
+# sixty seconds to a living world
+git clone https://github.com/skelinn/vivere && cd vivere
+make run        # watch a fresh world evolve, live
+
+# or download eden.snap from the v0.2.0 release — 6,000 generations of
+# evolved pacifists — and release the teeth into it yourself:
+cargo run --release -p vivere-cli -- run --resume eden.snap --override-contact true --ticks 1000000 --out invasion.csv
+```
 
 ## Principles
 
@@ -36,6 +49,14 @@ In v0.1 evolution has exactly two things to work with: steering (the brain) and 
 Bodies are now physically reachable energy to each other. A third brain output — bite, continuous effort exactly like thrust — drains a touching neighbor within the attacker's front arc. Firing costs a lunge whether or not anything is in reach; flesh transfers at 75% efficiency (the rest is heat); kills leave corpses that compost like any other body, so scavenging needed no new code. Nothing decides *for* an organism whether the channel is worth using: predation, parasitism, defense, kin-sparing, and mimicry are all just wiring that evolutionary search may or may not find. Three appended senses support whatever arms race follows — relative neighbor size, signed hue difference (kin discrimination: hue finally has consequences without gaining physics of its own), and `drain_felt`, the interoceptive *I am being eaten*.
 
 The gene walls also moved: v0.1 populations pinned four of five body genes against their range limits, so ranges widened ~2.5×, speed capacity now carries idle upkeep (unused muscle decays out of populations), and scale genes mutate multiplicatively in log space, reflecting at the walls. Old worlds can cross over: `vivere import-v01` carries a v0.1 snapshot into v0.2 physics — quarantined, or with the teeth on.
+
+## Field notes
+
+Nothing below was programmed; all of it grew — and every claim reproduces from a seed and a commit (metrics CSVs and world snapshots ship with each release).
+
+- **Succession** ([v0.1.0](https://github.com/skelinn/vivere/releases/tag/v0.1.0)): the founding boom selected fast, hot-metabolism, short-lived foragers; the mature grazed-down world reversed every one of those traits by generation ~600 — r→K succession from nothing but conserved energy and mutation.
+- **Honest costs move walls** ([v0.2.0](https://github.com/skelinn/vivere/releases/tag/v0.2.0)): the moment idle muscle carried upkeep, the speed gene fell off the ceiling it had sat against for thousands of generations, and size crossed its old wall within decades of generations. Cost curves, not clamps, are what shape bodies.
+- **Predation was invented, not installed** ([v0.2.0](https://github.com/skelinn/vivere/releases/tag/v0.2.0)): given contact physics and genomes with *zero* aggression wiring, a 6,000-generation pacifist ecosystem discovered biting, quadrupled its brains to the genome cap, crashed from 375 to 61 organisms, survived, and left the meadows three times fuller — a trophic cascade in a terrarium. The next binding wall is neural: [#10](https://github.com/skelinn/vivere/issues/10).
 
 ## Quickstart
 
