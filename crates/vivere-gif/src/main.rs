@@ -18,6 +18,7 @@ const FRAME_DELAY: u16 = 5; // hundredths of a second → 20 fps
 const LIGHT_LEVELS: usize = 8;
 const FOOD_IDX: u8 = 8;
 const DETRITUS_IDX: u8 = 9;
+const BITE_IDX: u8 = 10;
 const HUE_BASE: usize = 16;
 const HUE_COUNT: usize = 240;
 
@@ -104,6 +105,7 @@ fn build_palette() -> Vec<u8> {
     }
     set(&mut pal, FOOD_IDX as usize, [72, 200, 108]);
     set(&mut pal, DETRITUS_IDX as usize, [115, 97, 77]);
+    set(&mut pal, BITE_IDX as usize, [255, 74, 60]);
     for i in 0..HUE_COUNT {
         let c = hsv(i as f32 / HUE_COUNT as f32, 0.72, 0.95);
         set(&mut pal, HUE_BASE + i, c);
@@ -154,6 +156,11 @@ fn render(world: &World, bg: &[u8], w: i32, h: i32, scale: f32) -> Vec<u8> {
         let r = ((o.radius(&world.cfg) * scale) as i32).max(1);
         let hue_idx = HUE_BASE as u8
             + ((o.genome.body.hue * HUE_COUNT as f32) as usize).min(HUE_COUNT - 1) as u8;
+        // A biting organism flashes a red rim — the tool steps the world
+        // itself, so the transient bite effort is live here.
+        if o.last_bite > 0.05 {
+            dot(&mut buf, w, h, o.x * scale, o.y * scale, r + 1, BITE_IDX);
+        }
         dot(&mut buf, w, h, o.x * scale, o.y * scale, r, hue_idx);
     }
     buf
