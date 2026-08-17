@@ -1,0 +1,4 @@
+# "Same seed + same commit = same run" includes the compiler.
+[toolchain]
+channel = "1.97.1"
+components = ["rustfmt", "clippy"]

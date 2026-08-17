@@ -1,0 +1,10 @@
+[package]
+name = "vivere-viewer"
+description = "Native viewer for vivere worlds: watch, pause, step, inspect"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+vivere-core.workspace = true
+macroquad.workspace = true

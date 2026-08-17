@@ -1,0 +1,30 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/vivere-core",
+    "crates/vivere-cli",
+    "crates/vivere-viewer",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+postcard = { version = "1", features = ["alloc"] }
+libm = "0.2"
+clap = { version = "4", features = ["derive"] }
+toml = "0.8"
+macroquad = "0.4"
+vivere-core = { path = "crates/vivere-core" }
+
+# The simulation is the product: run it fast even during development.
+[profile.dev]
+opt-level = 1
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
