@@ -4,6 +4,7 @@ description = "Native viewer for vivere worlds: watch, pause, step, inspect"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 
 [dependencies]
 vivere-core.workspace = true
