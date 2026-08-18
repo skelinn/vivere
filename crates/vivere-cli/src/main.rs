@@ -26,8 +26,10 @@ enum Cmd {
         /// Log metrics every N ticks.
         #[arg(long, default_value_t = 100)]
         metrics_every: u64,
-        /// TOML config (see `vivere default-config`). Ignored when resuming:
-        /// a snapshot carries its own physics.
+        /// TOML config (see `vivere default-config`). On a fresh world this
+        /// is the world's config; with --resume it REPLACES the snapshot's
+        /// embedded config (an explicit experimenter override, announced on
+        /// stderr — for controlled A/B physics runs on existing worlds).
         #[arg(long)]
         config: Option<PathBuf>,
         /// Write the final world state here.
@@ -128,12 +130,22 @@ fn run(cli: Cli) -> Result<(), String> {
                 Some(path) => {
                     let bytes =
                         fs::read(path).map_err(|e| format!("reading {}: {e}", path.display()))?;
-                    let w = World::from_snapshot_bytes(&bytes)?;
+                    let mut w = vivere_cli::load_any_snapshot(&bytes, false)?;
                     eprintln!(
                         "resumed snapshot: tick {}, population {}",
                         w.tick,
                         w.organisms.len()
                     );
+                    if let Some(cpath) = &config {
+                        let text = fs::read_to_string(cpath)
+                            .map_err(|e| format!("reading {}: {e}", cpath.display()))?;
+                        w.cfg = toml::from_str(&text)
+                            .map_err(|e| format!("parsing {}: {e}", cpath.display()))?;
+                        eprintln!(
+                            "override: snapshot config REPLACED from {}",
+                            cpath.display()
+                        );
+                    }
                     w
                 }
                 None => {

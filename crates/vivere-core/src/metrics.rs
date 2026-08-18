@@ -2,6 +2,7 @@
 //! sample draws from a throwaway RNG derived from (seed, tick), so whether
 //! and how often you measure can never change what happens.
 
+use crate::brain::N_HIDDEN;
 use crate::genome::{genome_distance, sorted_connections};
 use crate::rng::Rng;
 use crate::world::World;
@@ -46,6 +47,21 @@ pub struct Metrics {
     /// value is the early warning of a population splitting in two.
     pub std_size_log: f64,
     pub std_speed_log: f64,
+    /// Genome-length spread and maximum (the cap tripwire: if max ever
+    /// exceeds 0.8 × genome_cap, the cap rises next release).
+    pub std_genome_len: f64,
+    pub max_genome_len: usize,
+    /// Mean hidden neurons per organism that are actually alive
+    /// (in-degree ≥ 1 AND out-degree ≥ 1 — write-only neurons are dead).
+    pub mean_hidden_used: f64,
+    /// Pearson correlation between connection count and bite income per
+    /// tick of life — the cognition-stratification signal: do bigger
+    /// brains belong to better predators?
+    pub corr_brain_gain: f64,
+    /// Fraction of genes in the diversity sample that are live wiring
+    /// (non-negligible weight, not dead-ended on an unused hidden neuron).
+    /// Distinguishes minds from mutation-ratchet junk mid-run.
+    pub live_conn_frac: f64,
 }
 
 impl Metrics {
@@ -73,6 +89,8 @@ impl Metrics {
             var.sqrt()
         };
 
+        let (diversity, live_conn_frac) = diversity_and_live(world);
+
         Metrics {
             tick: world.tick,
             population: n,
@@ -83,7 +101,7 @@ impl Metrics {
             mean_energy: mean(&|o| o.energy),
             max_energy: world.organisms.iter().map(|o| o.energy).fold(0.0, f64::max),
             mean_genome_len: mean(&|o| o.genome.connections.len() as f64),
-            diversity: diversity(world),
+            diversity,
             mean_size: mean(&|o| o.genome.body.size as f64),
             mean_speed_gene: mean(&|o| o.genome.body.max_speed as f64),
             mean_actual_speed: mean(&|o| o.last_speed as f64),
@@ -103,6 +121,38 @@ impl Metrics {
             neighbor_hue_count_total: world.neighbor_hue_count,
             std_size_log: std_log(&|o| o.genome.body.size as f64),
             std_speed_log: std_log(&|o| o.genome.body.max_speed as f64),
+            std_genome_len: {
+                let mean = world
+                    .organisms
+                    .iter()
+                    .map(|o| o.genome.connections.len() as f64)
+                    .sum::<f64>()
+                    * inv;
+                (world
+                    .organisms
+                    .iter()
+                    .map(|o| {
+                        let d = o.genome.connections.len() as f64 - mean;
+                        d * d
+                    })
+                    .sum::<f64>()
+                    * inv)
+                    .sqrt()
+            },
+            max_genome_len: world
+                .organisms
+                .iter()
+                .map(|o| o.genome.connections.len())
+                .max()
+                .unwrap_or(0),
+            mean_hidden_used: world
+                .organisms
+                .iter()
+                .map(|o| f64::from(hidden_alive(o)))
+                .sum::<f64>()
+                * inv,
+            corr_brain_gain: corr_brain_gain(world),
+            live_conn_frac,
         }
     }
 
@@ -111,7 +161,8 @@ impl Metrics {
          max_energy,mean_genome_len,diversity,mean_size,mean_speed_gene,mean_actual_speed,\
          mean_metab,mean_max_age,mean_generation,food_count,detritus_count,\
          world_energy,injected,radiated,drift,bites,predation_flux,\
-         mean_bite_hue_dist,mean_neighbor_hue_dist,std_size,std_speed"
+         mean_bite_hue_dist,mean_neighbor_hue_dist,std_size,std_speed,\
+         std_genome_len,max_genome_len,mean_hidden_used,corr_brain_gain,live_conn_frac"
     }
 
     /// One CSV row. Event counts and flux are reported per window: the
@@ -141,7 +192,7 @@ impl Metrics {
             0.0
         };
         format!(
-            "{},{},{},{},{},{},{:.4},{:.4},{:.4},{:.6},{:.4},{:.4},{:.4},{:.4},{:.2},{:.2},{},{},{:.4},{:.4},{:.4},{:.6e},{},{:.4},{:.4},{:.4},{:.4},{:.4}",
+            "{},{},{},{},{},{},{:.4},{:.4},{:.4},{:.6},{:.4},{:.4},{:.4},{:.4},{:.2},{:.2},{},{},{:.4},{:.4},{:.4},{:.6e},{},{:.4},{:.4},{:.4},{:.4},{:.4},{:.3},{},{:.2},{:.4},{:.4}",
             self.tick,
             self.population,
             b,
@@ -170,6 +221,11 @@ impl Metrics {
             nbr_hue,
             self.std_size_log,
             self.std_speed_log,
+            self.std_genome_len,
+            self.max_genome_len,
+            self.mean_hidden_used,
+            self.corr_brain_gain,
+            self.live_conn_frac,
         )
     }
 
@@ -206,14 +262,71 @@ impl Metrics {
             neighbor_hue_count_total: 0,
             std_size_log: 0.0,
             std_speed_log: 0.0,
+            std_genome_len: 0.0,
+            max_genome_len: 0,
+            mean_hidden_used: 0.0,
+            corr_brain_gain: 0.0,
+            live_conn_frac: 0.0,
         }
     }
 }
 
-fn diversity(world: &World) -> f64 {
+/// Hidden neurons of this organism that are actually alive: fed by at
+/// least one connection AND read by at least one.
+fn hidden_alive(o: &crate::organism::Organism) -> u32 {
+    let mut in_deg = [0u32; N_HIDDEN];
+    let mut out_deg = [0u32; N_HIDDEN];
+    for g in &o.genome.connections {
+        if !g.to_output {
+            in_deg[g.to as usize] += 1;
+        }
+        if g.from_hidden {
+            out_deg[g.from as usize] += 1;
+        }
+    }
+    (0..N_HIDDEN)
+        .filter(|&k| in_deg[k] >= 1 && out_deg[k] >= 1)
+        .count() as u32
+}
+
+/// Pearson correlation between connection count and bite income per tick
+/// of life, over the whole population. RNG-free; 0 when undefined.
+fn corr_brain_gain(world: &World) -> f64 {
+    let n = world.organisms.len();
+    if n < 3 {
+        return 0.0;
+    }
+    let inv = 1.0 / n as f64;
+    let xs: Vec<f64> = world
+        .organisms
+        .iter()
+        .map(|o| o.genome.connections.len() as f64)
+        .collect();
+    let ys: Vec<f64> = world
+        .organisms
+        .iter()
+        .map(|o| o.lifetime_bite_gain / f64::from(o.age.max(1)))
+        .collect();
+    let mx = xs.iter().sum::<f64>() * inv;
+    let my = ys.iter().sum::<f64>() * inv;
+    let mut cov = 0.0;
+    let mut vx = 0.0;
+    let mut vy = 0.0;
+    for (x, y) in xs.iter().zip(&ys) {
+        cov += (x - mx) * (y - my);
+        vx += (x - mx) * (x - mx);
+        vy += (y - my) * (y - my);
+    }
+    if vx <= 0.0 || vy <= 0.0 {
+        return 0.0;
+    }
+    cov / (vx.sqrt() * vy.sqrt())
+}
+
+fn diversity_and_live(world: &World) -> (f64, f64) {
     let n = world.organisms.len();
     if n < 2 {
-        return 0.0;
+        return (0.0, 0.0);
     }
     // A throwaway stream keyed to (seed, tick): deterministic, and
     // independent of how often anyone looks.
@@ -244,5 +357,38 @@ fn diversity(world: &World) -> f64 {
             count += 1;
         }
     }
-    sum / count as f64
+
+    // Live-wiring fraction over the same sample: a gene is live if its
+    // weight is non-negligible and it doesn't feed or read a hidden neuron
+    // nothing completes. Same classification as `vivere inspect`.
+    let mut live = 0u64;
+    let mut total = 0u64;
+    for &i in sample {
+        let o = &world.organisms[i as usize];
+        let mut in_deg = [0u32; N_HIDDEN];
+        let mut out_deg = [0u32; N_HIDDEN];
+        for g in &o.genome.connections {
+            if !g.to_output {
+                in_deg[g.to as usize] += 1;
+            }
+            if g.from_hidden {
+                out_deg[g.from as usize] += 1;
+            }
+        }
+        for g in &o.genome.connections {
+            total += 1;
+            let weak = g.weight.abs() < 0.01;
+            let dead = (g.from_hidden && in_deg[g.from as usize] == 0)
+                || (!g.to_output && out_deg[g.to as usize] == 0);
+            if !weak && !dead {
+                live += 1;
+            }
+        }
+    }
+    let live_frac = if total > 0 {
+        live as f64 / total as f64
+    } else {
+        0.0
+    };
+    (sum / count as f64, live_frac)
 }
