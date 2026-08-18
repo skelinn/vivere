@@ -819,7 +819,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "vivere-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "clap",
  "postcard",
@@ -830,7 +830,7 @@ dependencies = [
 
 [[package]]
 name = "vivere-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "libm",
  "postcard",
@@ -839,7 +839,7 @@ dependencies = [
 
 [[package]]
 name = "vivere-gif"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "gif",
  "vivere-core",
@@ -847,7 +847,7 @@ dependencies = [
 
 [[package]]
 name = "vivere-tty"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "crossterm",
  "vivere-core",
@@ -855,7 +855,7 @@ dependencies = [
 
 [[package]]
 name = "vivere-viewer"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "macroquad",
  "vivere-core",
