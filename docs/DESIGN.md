@@ -96,8 +96,14 @@ costs more than filling its tank.
 
 biosim4-style: the genome is a flat list of connection genes
 `(source, sink, weight)` where sources are senses or hidden neurons and
-sinks are hidden neurons or outputs. Fixed pools: 12 senses, 8 hidden, 3
-outputs (turn, thrust, bite). v0.2's channels were *appended*, so wiring
+sinks are hidden neurons or outputs. Fixed pools: 12 senses, 16 hidden
+(v0.3; the v0.2 census measured the 8-pool crowded), 3 outputs (turn,
+thrust, bite). Brain upkeep is `a·n + b·n²` — the quadratic wiring term
+makes mind size an economic frontier rather than a cap (the 4096 cap is a
+runaway guard ~4× past the apex economic ceiling, with a standing rule:
+crossing 0.8 × cap raises the cap, never the curve). `vivere inspect`
+censuses any snapshot: live vs junk wiring, hidden utilization, and what
+evolution actually reads. v0.2's channels were *appended*, so wiring
 evolved before them keeps its meaning and the new senses/outputs are
 reachable only through mutation — a fresh world starts with random bite
 wiring (persistence experiment); an imported v0.1 world has none
@@ -163,10 +169,13 @@ cheap ordered commit (eat, reproduce, death).
 
 `postcard` serialization of the whole `World` — config, RNG state, ledger,
 every organism including hidden activations — behind an 8-byte magic
-(`VIVERE02` as of v0.2; bumped on format change, mismatches refused, and
-`vivere import-v01` converts old snapshots behind two tamper-evident
-checksums: genes within the recorded v0.1 walls, energy books balanced).
-Restore is exact:
+(`VIVERE03` as of v0.3; bumped on format change, mismatches refused). The
+magic-sniffing `vivere import` converts any older snapshot through a chain
+of legacy modules: each owns its retired format's frozen struct shapes and
+converts *forward* into the next format's frozen shapes, only the newest
+module writes live types — O(1) maintenance per bump — and every hop is
+guarded by two tamper-evident checksums (genes within the recorded walls,
+energy books balanced). Restore is exact:
 a restored world's future is byte-identical to the original's (tested).
 Transient caches (grids, scratch buffers, inspector values) are
 `serde(skip)` and rebuilt on demand. Snapshots are how long runs resume

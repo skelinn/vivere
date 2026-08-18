@@ -50,13 +50,18 @@ Bodies are now physically reachable energy to each other. A third brain output �
 
 The gene walls also moved: v0.1 populations pinned four of five body genes against their range limits, so ranges widened ~2.5×, speed capacity now carries idle upkeep (unused muscle decays out of populations), and scale genes mutate multiplicatively in log space, reflecting at the walls. Old worlds can cross over: `vivere import-v01` carries a v0.1 snapshot into v0.2 physics — quarantined, or with the teeth on.
 
+## v0.3 — "cortex"
+
+v0.2's survivors pinned their genomes against the 64-connection cap — an administrative wall doing the job physics should. v0.3 audited the evolved brains first (`vivere inspect`: ~90% live wiring, hidden pool crowded — these were minds, not mutation junk), then replaced the wall with a price: brain upkeep grows quadratically with connectivity, the cap retreats to a distant runaway guard, and the hidden pool doubles. Under the new economics the ancient predator world's minds tripled to ~166 connections — 95.7% live wiring, every new neuron colonized — while fresh young worlds run on 30. Cognition costs what it costs; who can afford it is up to each world.
+
 ## Field notes
 
 Nothing below was programmed; all of it grew — and every claim reproduces from a seed and a commit (metrics CSVs and world snapshots ship with each release).
 
 - **Succession** ([v0.1.0](https://github.com/skelinn/vivere/releases/tag/v0.1.0)): the founding boom selected fast, hot-metabolism, short-lived foragers; the mature grazed-down world reversed every one of those traits by generation ~600 — r→K succession from nothing but conserved energy and mutation.
 - **Honest costs move walls** ([v0.2.0](https://github.com/skelinn/vivere/releases/tag/v0.2.0)): the moment idle muscle carried upkeep, the speed gene fell off the ceiling it had sat against for thousands of generations, and size crossed its old wall within decades of generations. Cost curves, not clamps, are what shape bodies.
-- **Predation was invented, not installed** ([v0.2.0](https://github.com/skelinn/vivere/releases/tag/v0.2.0)): given contact physics and genomes with *zero* aggression wiring, a 6,000-generation pacifist ecosystem discovered biting, quadrupled its brains to the genome cap, crashed from 375 to 61 organisms, survived, and left the meadows three times fuller — a trophic cascade in a terrarium. The next binding wall is neural: [#10](https://github.com/skelinn/vivere/issues/10).
+- **Predation was invented, not installed** ([v0.2.0](https://github.com/skelinn/vivere/releases/tag/v0.2.0)): given contact physics and genomes with *zero* aggression wiring, a 6,000-generation pacifist ecosystem discovered biting, quadrupled its brains to the genome cap, crashed from 375 to 61 organisms, survived, and left the meadows three times fuller — a trophic cascade in a terrarium.
+- **The brains were real, so we priced them** ([v0.3.0](https://github.com/skelinn/vivere/releases/tag/v0.3.0)): the census showed the cap-pinned genomes were ~90% live wiring, not mutation junk. With the wall replaced by a quadratic wiring cost, the 9,000-generation predator world grew its minds from 64 to ~166 connections — 95.7% live, all eight new hidden neurons at 100% fixation — while the control under old economics re-pinned at exactly the old cap. Minds go where income allows.
 
 ## Quickstart
 
@@ -93,9 +98,10 @@ Expectation-setting: a 50k-tick run is *early* evolution — some tens of genera
 Each step grows the world, not the feature list. Order is intent, not promise.
 
 - **v0.1 — protocell**: conserved energy, evolvable steering, asexual heredity, full instrumentation.
-- **v0.2 — contact** (this): bodies as reachable energy — the bite/defense/kin channels, wider gene walls, the v0.1 importer.
-- **v0.3 — chemistry or sex**: multiple resource types with evolvable metabolic pathways, or crossover and mate choice — whichever the worlds make more urgent.
-- **v0.4 — multicellularity**: bodies as cell collectives; development as part of the genome.
+- **v0.2 — contact**: bodies as reachable energy — the bite/defense/kin channels, wider gene walls, the v0.1 importer.
+- **v0.3 — cortex** (this): mind size as an economic frontier — the wiring cost curve, a doubled hidden pool, and the genome census.
+- **v0.4 — chemistry or sex**: multiple resource types with evolvable metabolic pathways, or crossover and mate choice — whichever the worlds make more urgent.
+- **v0.5 — multicellularity**: bodies as cell collectives; development as part of the genome.
 - **Beyond**: GPU compute for 10⁶-organism worlds, WASM/browser builds, and alternate substrates (e.g., continuous-CA worlds à la Lenia) behind the same sense→think→act seam — see [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Contributing
