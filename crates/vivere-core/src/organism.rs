@@ -26,6 +26,9 @@ pub struct Organism {
     pub last_bitten_tick: u64,
     /// Total energy ever drained from this organism by bites.
     pub lifetime_drained: f64,
+    /// Total energy this organism ever gained by biting others —
+    /// observation state for the cognition-stratification metric.
+    pub lifetime_bite_gain: f64,
     /// Energy drained by bites during the previous tick — the substrate of
     /// the `drain_felt` sense, so it is world state and serialized.
     pub drained_last_tick: f64,
@@ -56,11 +59,13 @@ impl Organism {
     pub fn upkeep(&self, cfg: &Config) -> f64 {
         let b = &cfg.body;
         let g = &self.genome.body;
+        let n = self.genome.connections.len() as f64;
         b.upkeep_floor
             + g.size as f64
                 * (b.upkeep_metab * g.metab as f64 + b.upkeep_age * (g.max_age as f64 / 1000.0))
             + b.upkeep_speed_capacity * (g.size * g.max_speed) as f64
-            + b.upkeep_per_connection * self.genome.connections.len() as f64
+            + b.upkeep_per_connection * n
+            + b.upkeep_connection_quad * n * n
     }
 
     /// Energy this organism can extract from food per tick while touching it.

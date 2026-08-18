@@ -93,6 +93,11 @@ pub struct BodyCfg {
     pub upkeep_speed_capacity: f64,
     /// Upkeep per tick per brain connection: computation costs energy.
     pub upkeep_per_connection: f64,
+    /// Upkeep per tick per brain connection *squared*: wiring costs grow
+    /// superlinearly with connectivity (each connection must integrate with
+    /// existing structure), so mind size is an economic frontier, not an
+    /// administrative wall. Pre-registered derivation in the Default impl.
+    pub upkeep_connection_quad: f64,
     /// Movement cost coefficient: cost = c · size · v² per tick.
     pub move_cost: f64,
     /// Eating rate per (metab × size) per tick while touching food.
@@ -212,7 +217,17 @@ impl Default for Config {
                 upkeep_metab: 0.012,
                 upkeep_age: 0.0007,
                 upkeep_speed_capacity: 0.002,
+                // Pre-registered (v0.3, before experiments A–C ran): the
+                // quadratic equals the linear term at n = 96, i.e. quad =
+                // linear/96. The v0.2 census showed evolved 64-gene brains
+                // are ~90% live wiring, so the knee prices real connectivity
+                // at realistic sizes (marginal cost ≈ 1% of grazing income
+                // at n = 100) while the apex economic ceiling √(income/quad)
+                // ≈ 850–1140 stays ~4× below the 4096 cap. Standing rule:
+                // if max genome length ever exceeds 0.8 × cap, the cap rises
+                // next release — this constant is never touched.
                 upkeep_per_connection: 0.0004,
+                upkeep_connection_quad: 4.2e-6,
                 move_cost: 0.004,
                 bite_rate: 3.0,
                 turn_rate: 0.25,
@@ -234,7 +249,7 @@ impl Default for Config {
                 body_p: 0.08,
                 scale_sigma_log: 0.06,
                 hue_sigma: 0.05,
-                genome_cap: 64,
+                genome_cap: 4096,
                 initial_connections: 12,
                 weight_max: 4.0,
             },

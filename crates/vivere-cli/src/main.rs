@@ -179,6 +179,7 @@ fn run(cli: Cli) -> Result<(), String> {
             let end = world.tick + ticks;
             let mut prev: Option<Metrics> = None;
             let mut extinct_announced = false;
+            let mut progress_clock = std::time::Instant::now();
 
             let log = |world: &World,
                        prev: &mut Option<Metrics>,
@@ -199,12 +200,15 @@ fn run(cli: Cli) -> Result<(), String> {
                     log(&world, &mut prev, &mut csv)?;
                 }
                 if world.tick % 5000 == 0 {
+                    let tps = 5000.0 / progress_clock.elapsed().as_secs_f64().max(1e-9);
+                    progress_clock = std::time::Instant::now();
                     eprintln!(
-                        "tick {:>8}  pop {:>6}  food {:>6}  births {:>7}",
+                        "tick {:>8}  pop {:>6}  food {:>6}  births {:>7}  {:>7.0} ticks/s",
                         world.tick,
                         world.organisms.len(),
                         world.food.len(),
-                        world.births
+                        world.births,
+                        tps
                     );
                 }
                 if world.organisms.is_empty() && !extinct_announced {
