@@ -7,11 +7,12 @@
 use crate::genome::Genome;
 use serde::{Deserialize, Serialize};
 
-// v0.2 appends senses 9–11 and output 2, so genomes evolved before the
-// additions keep their meaning: old wiring indices still point at the same
-// senses, and the new channels are reachable only through mutation.
+// v0.2 appended senses 9–11 and output 2; v0.3 grows the hidden pool 8→16
+// (the v0.2 census found ~7 of 8 neurons alive in evolved brains — the pool
+// was crowded). Appending preserves meaning: old wiring indices still point
+// at the same neurons, and new capacity is reachable only through mutation.
 pub const N_SENSES: usize = 12;
-pub const N_HIDDEN: usize = 8;
+pub const N_HIDDEN: usize = 16;
 pub const N_OUTPUTS: usize = 3;
 
 pub const SENSE_NAMES: [&str; N_SENSES] = [

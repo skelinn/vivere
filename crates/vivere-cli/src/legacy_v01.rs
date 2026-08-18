@@ -1,35 +1,19 @@
-//! v0.1 → v0.2 snapshot importer.
+//! v0.1 snapshot importer: frozen v0.1 shapes, converted **forward into the
+//! frozen v0.2 shapes** owned by [`crate::legacy_v02`], which alone writes
+//! live core types. Every future format bump leaves this module untouched —
+//! v0.1 imports compose through the chain.
 //!
-//! postcard is positional: decoding depends on exact struct shapes, so this
-//! module keeps **frozen verbatim copies** of every v0.1 serialized type
-//! (`V1*`, deserialize-only) — never the live core types, which are free to
-//! evolve. The write side mirrors the *current* serialized `World` layout
-//! (`V2World`) and round-trips the result through the official
-//! `World::from_snapshot_bytes`, so the core deserializer validates the
-//! conversion.
-//!
-//! Two guards make silent misalignment loud:
-//! - every gene must lie within the v0.1 walls recorded in the old config;
-//! - the imported world's energy books must balance (conservation is a free
-//!   checksum: a shifted decode almost certainly breaks it).
-//!
-//! Imported worlds get **v0.2 physics with their v0.1 environment**: same
-//! climate, new costs. That is the experiment.
+//! The intermediate `V02Config` built here is a carrier: `from_v02` only
+//! reads its world/env/repro/contact sections and its body *walls* (the
+//! gene guard); every other constant is replaced by current physics.
 
-use serde::{Deserialize, Serialize};
-use vivere_core::brain::BrainState;
-use vivere_core::config::Config;
-use vivere_core::genome::{Body, Connection, Genome};
-use vivere_core::world::{Detritus, Food, LightField, LightPatch, SNAPSHOT_MAGIC, World};
+use crate::legacy_v02::{self, RawRng};
+use serde::Deserialize;
+use vivere_core::world::World;
 
 const V1_MAGIC: &[u8; 8] = b"VIVERE01";
 
 // ---- frozen v0.1 shapes (deserialize only) --------------------------------
-
-#[derive(Deserialize, Serialize)]
-struct RawRng {
-    s: [u64; 4],
-}
 
 #[derive(Deserialize)]
 struct V1World {
@@ -209,58 +193,9 @@ struct V1Ledger {
     radiated: f64,
 }
 
-// ---- current serialized World layout (serialize only) ---------------------
-// Field order must mirror `World`'s serialized (non-skip) fields exactly;
-// the round-trip through `World::from_snapshot_bytes` enforces agreement.
-
-#[derive(Serialize)]
-struct V2World {
-    cfg: Config,
-    seed: u64,
-    tick: u64,
-    rng: RawRng,
-    organisms: Vec<V2Organism>,
-    food: Vec<Food>,
-    detritus: Vec<Detritus>,
-    light: LightField,
-    ledger: V2Ledger,
-    next_id: u64,
-    influx_accum: f64,
-    births: u64,
-    deaths_starve: u64,
-    deaths_age: u64,
-    deaths_predation: u64,
-    bites: u64,
-    predation_flux: f64,
-    bite_hue_sum: f64,
-    neighbor_hue_sum: f64,
-    neighbor_hue_count: u64,
-}
-
-#[derive(Serialize)]
-struct V2Ledger {
-    injected: f64,
-    radiated: f64,
-}
-
-#[derive(Serialize)]
-struct V2Organism {
-    id: u64,
-    generation: u32,
-    x: f32,
-    y: f32,
-    heading: f32,
-    energy: f64,
-    soma: f64,
-    age: u32,
-    genome: Genome,
-    brain: BrainState,
-    last_bitten_tick: u64,
-    lifetime_drained: f64,
-    drained_last_tick: f64,
-}
-
-/// Convert v0.1 snapshot bytes into a live v0.2 `World`.
+/// Convert v0.1 snapshot bytes into a live current-format `World`, via the
+/// frozen v0.2 shapes. v0.1 predates contact physics, so the caller decides
+/// whether the imported world has the channel enabled.
 pub fn import_v01(bytes: &[u8], contact_enabled: bool) -> Result<World, String> {
     if bytes.len() < V1_MAGIC.len() || &bytes[..V1_MAGIC.len()] != V1_MAGIC {
         return Err("not a v0.1 vivere snapshot (magic VIVERE01 missing)".into());
@@ -268,7 +203,7 @@ pub fn import_v01(bytes: &[u8], contact_enabled: bool) -> Result<World, String> 
     let v1: V1World = postcard::from_bytes(&bytes[V1_MAGIC.len()..])
         .map_err(|e| format!("v0.1 snapshot failed to decode: {e}"))?;
 
-    // Guard 1: every gene inside the walls the old world recorded.
+    // Guard: every gene inside the walls the old world recorded.
     let b = &v1.cfg.body;
     for o in &v1.organisms {
         let g = &o.genome.body;
@@ -289,81 +224,128 @@ pub fn import_v01(bytes: &[u8], contact_enabled: bool) -> Result<World, String> 
         }
     }
 
-    // v0.2 physics, v0.1 environment. That asymmetry is the experiment.
-    let mut cfg = Config::default();
-    cfg.world.width = v1.cfg.world.width;
-    cfg.world.height = v1.cfg.world.height;
-    cfg.world.sense_radius = v1.cfg.world.sense_radius;
-    cfg.world.initial_organisms = v1.cfg.world.initial_organisms;
-    cfg.world.initial_food = v1.cfg.world.initial_food;
-    cfg.world.initial_energy_frac = v1.cfg.world.initial_energy_frac;
-    cfg.env.influx_per_tick = v1.cfg.env.influx_per_tick;
-    cfg.env.food_energy = v1.cfg.env.food_energy;
-    cfg.env.food_cap = v1.cfg.env.food_cap;
-    cfg.env.light_base = v1.cfg.env.light_base;
-    cfg.env.light_patches = v1.cfg.env.light_patches;
-    cfg.env.light_patch_amp = v1.cfg.env.light_patch_amp;
-    cfg.env.light_patch_sigma = v1.cfg.env.light_patch_sigma;
-    cfg.env.compost_delay = v1.cfg.env.compost_delay;
-    cfg.env.compost_efficiency = v1.cfg.env.compost_efficiency;
-    cfg.repro.threshold_frac = v1.cfg.repro.threshold_frac;
-    cfg.repro.child_energy_frac = v1.cfg.repro.child_energy_frac;
-    cfg.repro.overhead = v1.cfg.repro.overhead;
-    cfg.repro.spawn_offset = v1.cfg.repro.spawn_offset;
-    cfg.contact.enabled = contact_enabled;
-
-    let organisms = v1
-        .organisms
-        .into_iter()
-        .map(|o| V2Organism {
-            id: o.id,
-            generation: o.generation,
-            x: o.x,
-            y: o.y,
-            heading: o.heading,
-            energy: o.energy,
-            soma: o.soma,
-            age: o.age,
-            genome: Genome {
-                connections: o
-                    .genome
-                    .connections
-                    .into_iter()
-                    .map(|c| Connection {
-                        from_hidden: c.from_hidden,
-                        from: c.from,
-                        to_output: c.to_output,
-                        to: c.to,
-                        weight: c.weight,
-                    })
-                    .collect(),
-                body: Body {
-                    size: o.genome.body.size,
-                    max_speed: o.genome.body.max_speed,
-                    metab: o.genome.body.metab,
-                    max_age: o.genome.body.max_age,
-                    hue: o.genome.body.hue,
-                },
+    let v02 = legacy_v02::V02World {
+        cfg: legacy_v02::V02Config {
+            world: legacy_v02::V02WorldCfg {
+                width: v1.cfg.world.width,
+                height: v1.cfg.world.height,
+                sense_radius: v1.cfg.world.sense_radius,
+                initial_organisms: v1.cfg.world.initial_organisms,
+                initial_food: v1.cfg.world.initial_food,
+                initial_energy_frac: v1.cfg.world.initial_energy_frac,
             },
-            brain: BrainState {
-                hidden: o.brain.hidden,
+            env: legacy_v02::V02EnvCfg {
+                influx_per_tick: v1.cfg.env.influx_per_tick,
+                food_energy: v1.cfg.env.food_energy,
+                food_cap: v1.cfg.env.food_cap,
+                light_base: v1.cfg.env.light_base,
+                light_patches: v1.cfg.env.light_patches,
+                light_patch_amp: v1.cfg.env.light_patch_amp,
+                light_patch_sigma: v1.cfg.env.light_patch_sigma,
+                compost_delay: v1.cfg.env.compost_delay,
+                compost_efficiency: v1.cfg.env.compost_efficiency,
             },
-            last_bitten_tick: u64::MAX,
-            lifetime_drained: 0.0,
-            drained_last_tick: 0.0,
-        })
-        .collect();
-
-    let v2 = V2World {
-        cfg,
+            // Carrier values: only the walls (already validated above) are
+            // read downstream; cost constants are replaced by current
+            // physics in from_v02.
+            body: legacy_v02::V02BodyCfg {
+                size_min: v1.cfg.body.size_min,
+                size_max: v1.cfg.body.size_max,
+                speed_min: v1.cfg.body.speed_min,
+                speed_max: v1.cfg.body.speed_max,
+                metab_min: v1.cfg.body.metab_min,
+                metab_max: v1.cfg.body.metab_max,
+                age_min: v1.cfg.body.age_min,
+                age_max: v1.cfg.body.age_max,
+                capacity_per_size: v1.cfg.body.capacity_per_size,
+                soma_per_size: v1.cfg.body.soma_per_size,
+                radius_per_size: v1.cfg.body.radius_per_size,
+                food_radius: v1.cfg.body.food_radius,
+                upkeep_floor: v1.cfg.body.upkeep_floor,
+                upkeep_metab: v1.cfg.body.upkeep_metab,
+                upkeep_age: v1.cfg.body.upkeep_age,
+                upkeep_speed_capacity: 0.002,
+                upkeep_per_connection: v1.cfg.body.upkeep_per_connection,
+                move_cost: v1.cfg.body.move_cost,
+                bite_rate: v1.cfg.body.bite_rate,
+                turn_rate: v1.cfg.body.turn_rate,
+                oscillator_period: v1.cfg.body.oscillator_period,
+            },
+            repro: legacy_v02::V02ReproCfg {
+                threshold_frac: v1.cfg.repro.threshold_frac,
+                child_energy_frac: v1.cfg.repro.child_energy_frac,
+                overhead: v1.cfg.repro.overhead,
+                spawn_offset: v1.cfg.repro.spawn_offset,
+            },
+            mutation: legacy_v02::V02MutationCfg {
+                weight_p: 0.05,
+                weight_sigma: 0.3,
+                rewire_p: 0.01,
+                add_p: 0.08,
+                remove_p: 0.05,
+                duplicate_p: 0.02,
+                body_p: 0.08,
+                scale_sigma_log: 0.06,
+                hue_sigma: 0.05,
+                genome_cap: 64,
+                initial_connections: 12,
+                weight_max: 4.0,
+            },
+            contact: legacy_v02::V02ContactCfg {
+                enabled: contact_enabled,
+                bite_flux: 0.6,
+                flesh_efficiency: 0.75,
+                lunge_cost: 0.05,
+            },
+        },
         seed: v1.seed,
         tick: v1.tick,
         rng: v1.rng,
-        organisms,
+        organisms: v1
+            .organisms
+            .into_iter()
+            .map(|o| legacy_v02::V02Organism {
+                id: o.id,
+                generation: o.generation,
+                x: o.x,
+                y: o.y,
+                heading: o.heading,
+                energy: o.energy,
+                soma: o.soma,
+                age: o.age,
+                genome: legacy_v02::V02Genome {
+                    connections: o
+                        .genome
+                        .connections
+                        .into_iter()
+                        .map(|c| legacy_v02::V02Connection {
+                            from_hidden: c.from_hidden,
+                            from: c.from,
+                            to_output: c.to_output,
+                            to: c.to,
+                            weight: c.weight,
+                        })
+                        .collect(),
+                    body: legacy_v02::V02Body {
+                        size: o.genome.body.size,
+                        max_speed: o.genome.body.max_speed,
+                        metab: o.genome.body.metab,
+                        max_age: o.genome.body.max_age,
+                        hue: o.genome.body.hue,
+                    },
+                },
+                brain: legacy_v02::V02Brain {
+                    hidden: o.brain.hidden,
+                },
+                last_bitten_tick: u64::MAX,
+                lifetime_drained: 0.0,
+                drained_last_tick: 0.0,
+            })
+            .collect(),
         food: v1
             .food
             .into_iter()
-            .map(|f| Food {
+            .map(|f| legacy_v02::V02Food {
                 x: f.x,
                 y: f.y,
                 energy: f.energy,
@@ -372,20 +354,20 @@ pub fn import_v01(bytes: &[u8], contact_enabled: bool) -> Result<World, String> 
         detritus: v1
             .detritus
             .into_iter()
-            .map(|d| Detritus {
+            .map(|d| legacy_v02::V02Detritus {
                 x: d.x,
                 y: d.y,
                 energy: d.energy,
                 ticks_left: d.ticks_left,
             })
             .collect(),
-        light: LightField {
+        light: legacy_v02::V02LightField {
             base: v1.light.base,
             patches: v1
                 .light
                 .patches
                 .into_iter()
-                .map(|p| LightPatch {
+                .map(|p| legacy_v02::V02LightPatch {
                     x: p.x,
                     y: p.y,
                     amp: p.amp,
@@ -393,7 +375,7 @@ pub fn import_v01(bytes: &[u8], contact_enabled: bool) -> Result<World, String> 
                 })
                 .collect(),
         },
-        ledger: V2Ledger {
+        ledger: legacy_v02::V02Ledger {
             injected: v1.ledger.injected,
             radiated: v1.ledger.radiated,
         },
@@ -410,17 +392,5 @@ pub fn import_v01(bytes: &[u8], contact_enabled: bool) -> Result<World, String> 
         neighbor_hue_count: 0,
     };
 
-    let mut out = SNAPSHOT_MAGIC.to_vec();
-    out.extend(postcard::to_allocvec(&v2).map_err(|e| format!("re-encode failed: {e}"))?);
-    let world = World::from_snapshot_bytes(&out)?;
-
-    // Guard 2: the books must balance in the imported world.
-    let err = world.conservation_error().abs();
-    let bound = 1e-6 * world.ledger.injected.max(1.0);
-    if err > bound {
-        return Err(format!(
-            "imported world leaks energy ({err:.3e} > {bound:.3e}) — misaligned decode?"
-        ));
-    }
-    Ok(world)
+    legacy_v02::from_v02(v02)
 }

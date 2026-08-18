@@ -31,7 +31,7 @@ use crate::rng::Rng;
 use core::f32::consts::{PI, TAU};
 use serde::{Deserialize, Serialize};
 
-pub const SNAPSHOT_MAGIC: &[u8; 8] = b"VIVERE02";
+pub const SNAPSHOT_MAGIC: &[u8; 8] = b"VIVERE03";
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Food {
@@ -186,6 +186,7 @@ impl World {
                 brain: BrainState::default(),
                 last_bitten_tick: u64::MAX,
                 lifetime_drained: 0.0,
+                lifetime_bite_gain: 0.0,
                 drained_last_tick: 0.0,
                 last_senses: [0.0; N_SENSES],
                 last_turn: 0.0,
@@ -351,6 +352,7 @@ impl World {
                         v.last_bitten_tick = self.tick;
                         let a = &mut self.organisms[ai];
                         a.energy += eff * drain;
+                        a.lifetime_bite_gain += eff * drain;
                         radiated += (1.0 - eff) * drain;
                         self.bites += 1;
                         self.predation_flux += drain;
@@ -444,6 +446,7 @@ impl World {
                 brain: BrainState::default(),
                 last_bitten_tick: u64::MAX,
                 lifetime_drained: 0.0,
+                lifetime_bite_gain: 0.0,
                 drained_last_tick: 0.0,
                 last_senses: [0.0; N_SENSES],
                 last_turn: 0.0,
